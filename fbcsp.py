@@ -78,7 +78,7 @@ class FBCSP(object):
 		if trial_start_inds.shape != (np.where(np.diff(self.marker, axis = 0) <= -1)[0] + 1).shape:
 			raise ValueError('Inconsistent # of trial starts and ends')
 
-		# Get number of training examples (trials)
+		# Set number of samples (trials)
 		self.N = trial_start_inds.shape[0]
 		# Allocate X and Y arrays
 		X = np.zeros([self.trial_len, self.n_ch, self.N, self.n_filters])
@@ -149,8 +149,8 @@ class FBCSP(object):
 		X_csp = np.zeros([self.m * 2, self.trial_len, self.N, self.n_filters])
 		for b in np.arange(self.n_filters):
 			# TODO: double check this
-			X_csp[0:, 0:, 0:, b] = np.dot(fb.X[0:, 0:, 0:, b].transpose(),\
-										  fb.Wm[0:, 0:, b]).transpose()
+			X_csp[0:, 0:, 0:, b] = np.dot(self.X[0:, 0:, 0:, b].transpose(),\
+										  self.Wm[0:, 0:, b]).transpose()
 
 			# Extract variance ratio features for each trial
 			for t in np.arange(self.N):
@@ -234,27 +234,30 @@ class FBCSP(object):
 				 / self.N
 
 		# Calculate (feature) mutual information
-		I_j = H_y - H_y_fj
+		self.I_j = H_y - H_y_fj
 
-		# Create feature label array for matching CSP feature pairs
-		feature_labels = np.zeros([(self.m*2), self.n_filters])
-		pattern = np.concatenate([np.arange(self.m), np.arange(self.m-1, -1, -1)])
-		for i in np.arange(0, n_features/2, self.m):
-			b = int(i/self.m)
-			feature_labels[0:, b] = pattern + i
-		feature_labels = feature_labels.reshape([self.m*2*self.n_filters], order='F')
+	def MIBIF_select(self, d=4):
+			
+			F = self.V
+			n_features = F.shape[1]
+			# Create feature label array for matching CSP feature pairs
+			feature_labels = np.zeros([(self.m*2), self.n_filters])
+			pattern = np.concatenate([np.arange(self.m), np.arange(self.m-1, -1, -1)])
+			for i in np.arange(0, n_features/2, self.m):
+				b = int(i/self.m)
+				feature_labels[0:, b] = pattern + i
+			feature_labels = feature_labels.reshape([self.m*2*self.n_filters], order='F')
 
-		# Sort features by information, get feature labels
-		d = 4
-		reorder = np.flip(np.argsort(I_j))
-		selected_labels = np.unique(feature_labels[reorder[:d]])
-		selected_features = np.zeros([self.N, selected_labels.shape[0]*2])
-		for j in np.arange(0, selected_features.shape[1], 2):
-			l_ind = int(j/2) 
-			selected_features[0:, j:j+2] = \
-				F[0:, np.where(feature_labels == selected_labels[l_ind])[0]]
-		
-		self.X_latent = selected_features
+			# Sort features by information, get feature labels
+			reorder = np.flip(np.argsort(self.I_j))
+			selected_labels = np.unique(feature_labels[reorder[:d]])
+			selected_features = np.zeros([self.N, selected_labels.shape[0]*2])
+			for j in np.arange(0, selected_features.shape[1], 2):
+				l_ind = int(j/2) 
+				selected_features[0:, j:j+2] = \
+					F[0:, np.where(feature_labels == selected_labels[l_ind])[0]]
+			
+			self.X_latent = selected_features
 
 def bandwidth_selection(y):
 	'''Return smoothing / bandwidth param h, given observations of y'''
@@ -341,8 +344,8 @@ def accuracy(y_hat, y_test):
 
 if __name__ == "__main__":
 	# Set data file path
-	#fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/CLASubjectA1601083StLRHand.mat'
-	fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/CLASubjectC1512163StLRHand.mat'
+	fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/CLASubjectA1601083StLRHand.mat'
+	#fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/CLASubjectC1512163StLRHand.mat'
 
 	np.random.seed(0)
 	# Initialize FBCSP
@@ -352,6 +355,9 @@ if __name__ == "__main__":
 	fb.filter()
 	# Chunk sessions (~50-55min) into 1s trials (N samples)
 	fb.chunk_trials()
+	# Store data
+	X = fb.X
+	Y = fb.Y
 
 	# Allocate samples for cross-validation
 	n_folds = 10
@@ -374,27 +380,43 @@ if __name__ == "__main__":
 
 	# Loop over folds
 	for fold in np.arange(1, n_folds+1):
-		# Split y test data into training and test
-		y_test = fb.Y[fold_labels == fold]
+		train_fold = np.where(fold_labels != fold)[0]
+		test_fold = np.where(fold_labels == fold)[0]
+		y_test = Y[test_fold]
+
 		# Loop over classes, this is where the magic of one-versus-rest
 		# (OVR) happens. 
 		for w in class_set.astype(int):
+			# Set fbcsp data to train
+			fb.X = X[0:, 0:, train_fold, 0:]
+			fb.Y = Y[train_fold]
+			fb.N = fb.Y.shape[0]
 			# Calculate CSP transformation matrix
 			fb.CSP(w)
-			# Transform X data into CSP coordinates, and calculate 
+			# Transform training data into CSP coordinates, and calculate 
 			# variance ratio features.
 			fb.CSP_xform()
-			# Select most informative CSP variance features ('X_latent')
+			# Calculate information for CSP variance features
 			fb.MIBIF(w)
+			# Select most informative CSP variance features
+			fb.MIBIF_select()
+			# Get classification training data
+			x_train = fb.X_latent
+
+			# Set fbcsp data to test
+			fb.X = X[0:, 0:, test_fold, 0:]
+			fb.N = fb.X.shape[2]
+
+			# Extract and select test features
+			fb.CSP_xform()
+			fb.MIBIF_select()
+			x_test = fb.X_latent
 
 			# Set OVR sample-class labels 
-			Y_ovr = np.zeros(fb.Y.shape)
-			Y_ovr[fb.Y != w] = 0
-			Y_ovr[fb.Y == w] = 1
-			# Split x data into training and test
-			x_test = fb.X_latent[fold_labels == fold, 0:]
-			x_train = fb.X_latent[fold_labels != fold, 0:]
-			y_train = Y_ovr[fold_labels != fold]
+			Y_ovr = np.zeros(Y.shape)
+			Y_ovr[Y != w] = 0
+			Y_ovr[Y == w] = 1
+			y_train = Y_ovr[train_fold]
 			# Classify, returns OVR probabilities for each 'one' in OVR
 			p_y_x[0:, 0:, w-1] = naive_bayes_kde(x_test, x_train, y_train)
 
