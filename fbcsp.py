@@ -2,7 +2,29 @@
 from EEG data. 
 
 References:
-TODO
+1. Ang, K.K., Chin, Z.Y., Wang, C., Guan, C., and Zhang, H. (2012). 
+	Filter Bank Common Spatial Pattern Algorithm on BCI Competition IV 
+	Datasets 2a and 2b. Front. Neurosci. 6.
+2. Chin, Z., Ang, K., Wang, C., Guan, C., and Zhang, H. (2009). 
+	Multi-class Filter Bank Common Spatial Pattern for Four-Class Motor 
+	Imagery BCI.
+3. Kai Keng Ang, Zheng Yang Chin, Haihong Zhang, and Cuntai Guan (2008). 
+	Filter Bank Common Spatial Pattern (FBCSP) in Brain-Computer Interface. 
+	In 2008 IEEE International Joint Conference on Neural Networks 
+	(IEEE World Congress on Computational Intelligence), pp. 2390–2397.
+4. Kaya, M., Binli, M.K., Ozbay, E., Yanar, H., and Mishchenko, Y. (2018). 
+	A large electroencephalographic motor imagery dataset for 
+	electroencephalographic brain computer interfaces. 
+	Scientific Data 5, 180211.
+5. Koles, Z.J., Lazar, M.S., and Zhou, S.Z. (1990). Spatial patterns 
+	underlying population differences in the background EEG. Brain 
+	Topogr 2, 275–284.
+6. Mishchenko, Y., Kaya, M., Ozbay, E., and Yanar, H. (2019). Developing 
+	a Three- to Six-State EEG-Based Brain–Computer Interface for a Virtual 
+	Robotic Manipulator Control. IEEE Transactions on Biomedical 
+	Engineering 66, 977–987.
+
+
 '''
 
 import matplotlib.pyplot as plt
@@ -11,7 +33,9 @@ from scipy import io, signal, linalg
 from sklearn.metrics import cohen_kappa_score
 
 class FBCSP(object):
-	'''Filter Bank Common Spatial Patern (FBCSP) analysis class'''
+	'''Filter Bank Common Spatial Patern (FBCSP) analysis class
+	Refs: Ang et al., 2008; Ang et al., 2012; Chin et al., 2009
+	'''
 	def __init__(self, fpath):
 		mat_file = io.loadmat(fpath)
 
@@ -40,6 +64,7 @@ class FBCSP(object):
 	def filter(self):
 		'''Create standard filter bank array of:
 		4-8, 8-12, 12-16, 16-20, 20-24, 24-28, 28-32, 32-36, 36-40
+		Refs: Ang et al., 2008; Ang et al., 2012; Chin et al., 2009
 		'''
 
 		self.n_filters = 9		# Standard FBCSP filter bank
@@ -100,11 +125,16 @@ class FBCSP(object):
 		self.X = np.swapaxes(X, 0, 1)
 		self.Y = Y
 
-	def CSP(self, class_marker):
+	def CSP(self, class_marker, m=4):
 		'''Perform Common Spatial Pattern (CSP) dimensionality reduction / 
 	 	feature extraction. Multi-class extension using OVR. 
-	 	TODO: references
-	 	class_marker: integer 1-6 indicating y value.
+
+	 	Parameters:
+	 		m: Number of CSP features to use to build transformation
+	 			matrix Wm. Actual dimension of Wm will be 2*m since CSP
+	 			features are paired.
+
+	 	Refs: Koles et al., 1990
 	 	'''
 
 	 	# Calculate trial covariance matrices 
@@ -134,13 +164,14 @@ class FBCSP(object):
 			W[0:, 0:, b] = W[0:, reorder, b]
 
 		# Select top and bottom 4 eigenvectors (TODO: refernece)
-		self.m = 4
+		self.m = m
 		self.Wm = np.concatenate((W[0:, :self.m, 0:], \
 							      W[0:, (self.n_ch - self.m):, 0:]), axis=1)
 
 	def CSP_xform(self):
 		'''Transform filtered eeg data (X) into CSP coordinates using
 		projection matrix Wm. Then extract variance ratio features.
+		Refs: Koles et al., 1990
 		'''
 
 		# Allocate array for variance ratio features, V
@@ -170,13 +201,17 @@ class FBCSP(object):
 		Step 2 - Calculate mutual information of each feature f_j with 
 				 each class label.
 		Step 3 - Select first k features
+		
+	 	Parameters:
+	 		class_marker: Class label / y value to select as 'one' for
+	 			OVR training.
 
-		TODO: refs. 
+		Refs: Ang et al., 2008; Ang et al., 2012; Chin et al., 2009
+
 		TODO: Original FBCSP papers also
 		used Mutual Information-based Rough Set Reduction (MIRSR), but 
 		Chin et al., 2009 multi-class FBCSP extension only uses MIBIF. 
 		Might consider trying MIRSR later.
-		TODO: Confirm that OVR is also the right approach here.
 		'''
 
 		# Set up featue vector F
@@ -237,27 +272,36 @@ class FBCSP(object):
 		self.I_j = H_y - H_y_fj
 
 	def MIBIF_select(self, d=4):
-			
-			F = self.V
-			n_features = F.shape[1]
-			# Create feature label array for matching CSP feature pairs
-			feature_labels = np.zeros([(self.m*2), self.n_filters])
-			pattern = np.concatenate([np.arange(self.m), np.arange(self.m-1, -1, -1)])
-			for i in np.arange(0, n_features/2, self.m):
-				b = int(i/self.m)
-				feature_labels[0:, b] = pattern + i
-			feature_labels = feature_labels.reshape([self.m*2*self.n_filters], order='F')
+		''' Select d most informative features using M.I. calcualted
+		from MIBIF. CSP features are paired so selected features will be
+		in range d to 2*d.
 
-			# Sort features by information, get feature labels
-			reorder = np.flip(np.argsort(self.I_j))
-			selected_labels = np.unique(feature_labels[reorder[:d]])
-			selected_features = np.zeros([self.N, selected_labels.shape[0]*2])
-			for j in np.arange(0, selected_features.shape[1], 2):
-				l_ind = int(j/2) 
-				selected_features[0:, j:j+2] = \
-					F[0:, np.where(feature_labels == selected_labels[l_ind])[0]]
-			
-			self.X_latent = selected_features
+	 	Parameters:
+	 		d: Number of features to select. Actual number will be in
+	 			range d to 2*d
+
+		Refs: Ang et al., 2008; Ang et al., 2012; Chin et al., 2009
+		'''
+		F = self.V
+		n_features = F.shape[1]
+		# Create feature label array for matching CSP feature pairs
+		feature_labels = np.zeros([(self.m*2), self.n_filters])
+		pattern = np.concatenate([np.arange(self.m), np.arange(self.m-1, -1, -1)])
+		for i in np.arange(0, n_features/2, self.m):
+			b = int(i/self.m)
+			feature_labels[0:, b] = pattern + i
+		feature_labels = feature_labels.reshape([self.m*2*self.n_filters], order='F')
+
+		# Sort features by information, get feature labels
+		reorder = np.flip(np.argsort(self.I_j))
+		selected_labels = np.unique(feature_labels[reorder[:d]])
+		selected_features = np.zeros([self.N, selected_labels.shape[0]*2])
+		for j in np.arange(0, selected_features.shape[1], 2):
+			l_ind = int(j/2) 
+			selected_features[0:, j:j+2] = \
+				F[0:, np.where(feature_labels == selected_labels[l_ind])[0]]
+		
+		self.X_latent = selected_features
 
 def bandwidth_selection(y):
 	'''Return smoothing / bandwidth param h, given observations of y'''
@@ -273,6 +317,10 @@ def gaussian_kernel(y, h):
 def kernel_density_estimate(x, x_train, h):
 	'''Return Gaussian kernel density estimate for x, using vector of 
 	x_train and smoothing / bandwidth parameter h.
+
+	Parameters:
+		x:	  	 Feature to calculate probability density for. Dx1.
+		x_train: Feature data for training set. NxD
 	'''
 	# TODO: double check that scaling by h is being done properly
 	p = gaussian_kernel(x - x_train, h).sum() / (x_train.shape[0] * h)
@@ -281,6 +329,11 @@ def kernel_density_estimate(x, x_train, h):
 def naive_bayes_kde(x_test, x_train, y_train):
 	'''Naive bayes classifier using kernel density estimation / parzen
 	window for p(x|y). This method is a lazy learner.
+
+	Parameters:
+		x_test:  Feature data for test set. NxD.
+		x_train: Feature data for training set. NxD.
+		y_train: Class labels for training set. Nx1.
 	'''
 
 	N, D = x_test.shape
@@ -342,12 +395,21 @@ def accuracy(y_hat, y_test):
 	accuracy = np.sum(y_hat == y_test) / y_hat.shape[0]
 	return accuracy
 
-if __name__ == "__main__":
-	# Set data file path
-	fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/CLASubjectA1601083StLRHand.mat'
-	#fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/CLASubjectC1512163StLRHand.mat'
+def run_session(fpath, m=4, d=4):
+	'''Run the entire FBCSP algorithm on a particular recording session.
 
-	np.random.seed(0)
+ 	Parameters:
+ 		fpath: File path of session to run.
+
+ 		m: 	   Number of CSP features to use to build transformation 
+ 			   matrix Wm. Actual dimension of Wm will be 2*m since CSP
+ 			   features are paired.
+
+ 		d:     Number of features to select. Actual number will be in
+ 			   range d to 2*d. 
+
+	'''
+
 	# Initialize FBCSP
 	fb = FBCSP(fpath)
 	# Filter data, this is done before chunking into trial /sample 
@@ -355,34 +417,36 @@ if __name__ == "__main__":
 	fb.filter()
 	# Chunk sessions (~50-55min) into 1s trials (N samples)
 	fb.chunk_trials()
+	# Normalize filtered EEG trial data
+	# fb.X = fb.X.transpose() - fb.X.min(axis=3).min(axis=2).min(axis=1)
+	# fb.X = fb.X / fb.X.std(axis=2).std(axis=1).std(axis=0)
+	# fb.X = fb.X.transpose()
 	# Store data
 	X = fb.X
 	Y = fb.Y
 
 	# Allocate samples for cross-validation
-	n_folds = 10
+	n_folds = 5
 	fold_labels = cv_select(fb.N, cv=n_folds)
 	# Get set of class labels
 	class_set = np.unique(fb.Y)
-	# Get fold size. This will be problematic if N is not divisible by 
-	# n_folds. TODO: fix this.
-	test_size = int(np.floor(fb.N / n_folds))
-
-	# Allocate array for predicted class probabilities p(y|x)
-	# axis=1: N
-	# axis=2: 2 - # OVR classes
-	# axis=3: # of total classes
-	p_y_x = np.zeros([test_size, 2, class_set.shape[0]])
 	
 	# Allocate arrays for accuracy metrics
-	a = np.zeros(n_folds)
+	acc = np.zeros(n_folds)
 	kappa = np.zeros(n_folds)
 
 	# Loop over folds
 	for fold in np.arange(1, n_folds+1):
 		train_fold = np.where(fold_labels != fold)[0]
 		test_fold = np.where(fold_labels == fold)[0]
+		test_size = test_fold.shape[0]
 		y_test = Y[test_fold]
+
+		# Allocate array for predicted class probabilities p(y|x)
+		# axis=1: N
+		# axis=2: 2 - # OVR classes
+		# axis=3: # of total classes
+		p_y_x = np.zeros([test_size, 2, class_set.shape[0]])
 
 		# Loop over classes, this is where the magic of one-versus-rest
 		# (OVR) happens. 
@@ -392,14 +456,14 @@ if __name__ == "__main__":
 			fb.Y = Y[train_fold]
 			fb.N = fb.Y.shape[0]
 			# Calculate CSP transformation matrix
-			fb.CSP(w)
+			fb.CSP(class_marker=w, m=m)
 			# Transform training data into CSP coordinates, and calculate 
 			# variance ratio features.
 			fb.CSP_xform()
 			# Calculate information for CSP variance features
-			fb.MIBIF(w)
+			fb.MIBIF(class_marker=w)
 			# Select most informative CSP variance features
-			fb.MIBIF_select()
+			fb.MIBIF_select(d=d)
 			# Get classification training data
 			x_train = fb.X_latent
 
@@ -409,7 +473,7 @@ if __name__ == "__main__":
 
 			# Extract and select test features
 			fb.CSP_xform()
-			fb.MIBIF_select()
+			fb.MIBIF_select(d=d)
 			x_test = fb.X_latent
 
 			# Set OVR sample-class labels 
@@ -423,8 +487,19 @@ if __name__ == "__main__":
 		# Select class label with highest OVR probability
 		y_hat = p_y_x[0:,1,0:].argmax(axis=1) + 1
 		# Calculate accuracy and cohen's kappa metrics
-		a[fold-1] = accuracy(y_hat, y_test)
+		acc[fold-1] = accuracy(y_hat, y_test)
 		kappa[fold-1] = cohen_kappa_score(y_hat, y_test)
+	return acc, kappa
+
+
+if __name__ == "__main__":
+	# Set data file path
+	fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/CLASubjectA1601083StLRHand.mat'
+	#fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/CLASubjectC1512163StLRHand.mat'
+	#fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/5F-SubjectF-151027-5St-SGLHand.mat'
+
+	np.random.seed(0)
+	acc, kappa = run_session(fpath, m=9, d=4)
 
 		
 
