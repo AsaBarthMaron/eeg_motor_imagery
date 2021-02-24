@@ -65,7 +65,9 @@ class FBCSP(object):
 
     def filter(self):
         """Create standard filter bank array of:
-        4-8, 8-12, 12-16, 16-20, 20-24, 24-28, 28-32, 32-36, 36-40
+        4-8, 8-12, 12-16, 16-20, 20-24, 24-28, 28-32, 32-36, 36-40.
+        This is done before chunking data into trials or splitting into,
+        train / test, to avoid unnecessary boundary conditions.
         Refs: Ang et al., 2008; Ang et al., 2012; Chin et al., 2009
         """
 
@@ -100,7 +102,13 @@ class FBCSP(object):
                                         self.data[0:, ch])
 
     def chunk_trials(self):
-        """Break 50-55 min session traces into individual trial epochs"""
+        """Break 50-55 min session traces into individual trial epochs
+        
+        Returns:
+            X: Filtered trial data (training data). Dimensions of X
+                are n_ch x trial_len x N x n_filters.
+            Y: Class labels (training data). Dimensions are N X 1.
+        """
 
         # Find trial start indices. 
         trial_start_inds = np.where(np.diff(self.marker, axis = 0) 
@@ -112,15 +120,15 @@ class FBCSP(object):
             raise ValueError('Inconsistent # of trial starts and ends')
 
         # Set number of samples (trials)
-        self.N = trial_start_inds.shape[0]
+        N = trial_start_inds.shape[0]
         # Allocate X and Y arrays
         X = np.zeros([self.trial_len, 
                       self.n_ch, 
-                      self.N, 
+                      N, 
                       self.n_filters])
-        Y = np.zeros(self.N)
+        Y = np.zeros(N)
         # Loop over trial start indices and chunk
-        for i in range(self.N):
+        for i in range(N):
             # Trial start index
             t_i = trial_start_inds[i]
             # Grab epoch / chunk, self.X is filtered unchunked data
@@ -133,36 +141,40 @@ class FBCSP(object):
         # t: trial_len (trial length, in samples)
         # N: N (number of training samples/trials)
         # b : n_filters (number of filters)
-        self.X = np.swapaxes(X, 0, 1)
-        self.Y = Y
+        X = np.swapaxes(X, 0, 1)
+        Y = Y
+        return X, Y
 
-    def CSP(self, class_marker, m=4):
+    def CSP(self, X, Y, class_marker, m=4):
         """Perform Common Spatial Pattern (CSP) dimensionality reduction  
         / feature extraction. Multi-class extension using OVR. 
 
         Parameters:
+            X: Filtered trial data (training data). Dimensions of X
+                are n_ch x trial_len x N x n_filters.
+            Y: Class labels (training data). Dimensions are N X 1.
             m: Number of CSP features to use to build transformation
                 matrix Wm. Actual dimension of Wm will be 2*m since CSP
                 features are paired.
+            class_marker: Class label / y value to select as 'one' for
+                OVR training.
 
         Refs: Koles et al., 1990
         """
 
+        N = Y.shape[0]
         # Calculate trial covariance matrices 
-        trial_cov = np.zeros([self.n_ch, self.n_ch, self.N, 
-                              self.n_filters])
+        trial_cov = np.zeros([self.n_ch, self.n_ch, N, self.n_filters])
         for b in range(self.n_filters):
-            for n in range(self.N):
-                trial_cov[0:, 0:, n, b] = np.cov(self.X[0:, 0:, n, b])
+            for n in range(N):
+                trial_cov[0:, 0:, n, b] = np.cov(X[0:, 0:, n, b])
 
         # Allocate arrays for class conditional covariance matrices
         class_cov = np.zeros([self.n_ch, self.n_ch, self.n_filters])
         rest_cov = np.zeros([self.n_ch, self.n_ch, self.n_filters])
         # Average over trials for 'class_marker' and rest 
-        class_cov = trial_cov[0:, 0:, 
-                              self.Y == class_marker, 0:].mean(axis=2)
-        rest_cov = trial_cov[0:, 0:, 
-                              self.Y != class_marker, 0:].mean(axis=2)
+        class_cov = trial_cov[0:,0:,Y == class_marker, 0:].mean(axis=2)
+        rest_cov = trial_cov[0:,0:, Y != class_marker, 0:].mean(axis=2)
 
         # Solve generalized eigenvalue problem for each Wb
         # Wb: CSP projection matrix for bth band-pass filtered EEG signal
@@ -183,63 +195,75 @@ class FBCSP(object):
                                   W[0:, (self.n_ch - self.m):, 0:]), 
                                   axis=1)
 
-    def CSP_xform(self):
+    def CSP_xform(self, X):
         """Transform filtered eeg data (X) into CSP coordinates using
         projection matrix Wm. Then extract variance ratio features.
         Refs: Koles et al., 1990
+
+        Parameters:
+            X: Filtered trial data (training data). Dimensions of X
+                are n_ch x trial_len x N x n_filters.
+        Returns:
+            V: CSP feature vector (variance ratio features). Also termed
+                'F' in MIBIF step. Dimensions of V are N x (2*m*9) - 2
+                since CSP features are paired, m CSP features, for 9
+                filtered signals. 
         """
 
+        N = X.shape[2]
         # Allocate array for variance ratio features, V
-        self.V = np.zeros([self.m * 2, self.N, self.n_filters])
+        V = np.zeros([self.m * 2, N, self.n_filters])
         # Transform X data for each bth band-pass filtered EEG signal
         X_csp = np.zeros([self.m * 2, 
                           self.trial_len, 
-                          self.N, 
+                          N, 
                           self.n_filters])
         for b in range(self.n_filters):
             # TODO: double check this
-            X_csp[0:,0:,0:,b] = np.dot(self.X[0:,0:,0:,b].transpose(),\
-                                          self.Wm[0:,0:,b]).transpose()
+            X_csp[0:,0:,0:,b] = np.dot(X[0:,0:,0:,b].transpose(),
+                                       self.Wm[0:,0:,b]).transpose()
 
             # Extract variance ratio features for each trial
-            for t in range(self.N):
-                x_csp_cov = np.dot(X_csp[0:, 0:, t, b], \
+            for t in range(N):
+                x_csp_cov = np.dot(X_csp[0:, 0:, t, b], 
                                    X_csp[0:, 0:, t, b].transpose())
-                self.V[0:, t, b] = np.log(np.diag(x_csp_cov) / \
-                                          np.trace(x_csp_cov))
+                V[0:, t, b] = np.log(np.diag(x_csp_cov) / 
+                                     np.trace(x_csp_cov))
 
         # V in Ang et al., 2012 is N x (2*m*9)
-        self.V = self.V.transpose([1, 0, 2])\
-                       .reshape([self.N, 2*self.m*self.n_filters], 
-                                 order='F')
+        V = V.transpose([1, 0, 2])\
+             .reshape([N, 2*self.m*self.n_filters], order='F')
+        return V
 
-    def MIBIF(self, class_marker):
+    def MIBIF(self, F, Y, class_marker):
         """Mutual Information-based Best Individual Feature (MIBIF) for
         feature selection. 
         Step 1 - Initalize set of features (F)
         Step 2 - Calculate mutual information of each feature f_j with 
                  each class label.
-        Step 3 - Select first k features
+        Step 3 - Select first d features (performed in MIBIF_select)
         
         Parameters:
+            F: CSP feature vector (variance ratio features). Also termed
+                'V' in CSP step. Dimensions of F are N x (2*m*9) - 2
+                since CSP features are paired, m CSP features, for 9
+                filtered signals. 
+            Y: Class labels (training data). Dimensions are N X 1.
             class_marker: Class label / y value to select as 'one' for
                 OVR training.
 
         Refs: Ang et al., 2008; Ang et al., 2012; Chin et al., 2009
 
-        TODO: Original FBCSP papers also
-        used Mutual Information-based Rough Set Reduction (MIRSR), but 
-        Chin et al., 2009 multi-class FBCSP extension only uses MIBIF. 
-        Might consider trying MIRSR later.
+        TODO: Original FBCSP papers also used Mutual Information-based 
+        Rough Set Reduction (MIRSR), but Chin et al., 2009 multi-class 
+        FBCSP extension only uses MIBIF. Might consider trying MIRSR later.
         """
 
-        # Set up featue vector F
-        F = self.V
-
+        N = Y.shape[0]
         # Set one-vs-rest class labels
-        Y_ovr = np.zeros(self.Y.shape)
-        Y_ovr[self.Y != class_marker] = 0
-        Y_ovr[self.Y == class_marker] = 1
+        Y_ovr = np.zeros(N)
+        Y_ovr[Y != class_marker] = 0
+        Y_ovr[Y == class_marker] = 1
 
         # Step 2 - compute mutual information of each feature with class
         # I(f_j; w) = H(w) - H(w|f_j)
@@ -256,11 +280,11 @@ class FBCSP(object):
 
         # Allocate conditional probability array p(f_ji|y)
         n_features = F.shape[1]
-        p_fji_y = np.zeros([n_features, self.N, 2])
+        p_fji_y = np.zeros([n_features, N, 2])
         # Allocate marginal probability array p(f_ji)
-        p_fji = np.zeros([n_features, self.N])
+        p_fji = np.zeros([n_features, N])
         # Allocate posterior likelihood array p(y|f_ji)
-        p_y_fji = np.zeros([2, n_features, self.N])
+        p_y_fji = np.zeros([2, n_features, N])
         # Loop over features
         for j in range(n_features):
             # Loop over classes
@@ -270,7 +294,7 @@ class FBCSP(object):
                 # Select kernel bandwidth for conditional p(f_j|y)
                 h = bandwidth_selection(f_y)
                 # Calculate class conditional probability p(f_ji|y)
-                for i in range(self.N):
+                for i in range(N):
                     f = F[i, j]
                     p_fji_y[j, i, y] = kernel_density_estimate(f, f_y, h)
             # Calculate marginal probability p(f_ji), law of total 
@@ -286,24 +310,35 @@ class FBCSP(object):
         # it was not included in Ang et al., 2012 and that threw me 
         # through a loop for a while.
         H_y_fj = -(p_y_fji * np.log2(p_y_fji)).sum(axis=2).sum(axis=0) \
-                 / self.N
+                 / N
 
         # Calculate (feature) mutual information
         self.I_j = H_y - H_y_fj
 
-    def MIBIF_select(self, d=4):
+    def MIBIF_select(self, F, d=4):
         """ Select d most informative features using M.I. calcualted
         from MIBIF. CSP features are paired so selected features will be
         in range d to 2*d.
 
         Parameters:
+            F: CSP feature vector (variance ratio features). Also termed
+                'V' in CSP step. Dimensions of F are N x (2*m*9) - 2
+                since CSP features are paired, m CSP features, for 9
+                filtered signals. 
             d: Number of features to select. Actual number will be in
                 range d to 2*d
+        Returns:
+            X_latent: Selected CSP feature vector (variance ratio 
+                        features). Dimensions are N x d to N x 2*d.
+                        CSP features are paired so if only pairs are 
+                        selected then it will be d features, but if only
+                        unpaired features are selected then it will be
+                        2*d. 
 
         Refs: Ang et al., 2008; Ang et al., 2012; Chin et al., 2009
         """
-        F = self.V
-        n_features = F.shape[1]
+        
+        N, n_features= F.shape
         # Create feature label array for matching CSP feature pairs
         feature_labels = np.zeros([(self.m*2), self.n_filters])
         pattern = np.concatenate([range(self.m), 
@@ -317,15 +352,15 @@ class FBCSP(object):
         # Sort features by information, get feature labels
         reorder = np.flip(np.argsort(self.I_j))
         selected_labels = np.unique(feature_labels[reorder[:d]])
-        selected_features = np.zeros([self.N, 
-                                      selected_labels.shape[0]*2])
+        selected_features = np.zeros([N, selected_labels.shape[0]*2])
         for j in range(0, selected_features.shape[1], 2):
             l_ind = int(j/2) 
             selected_features[0:, j:j+2] = \
                 F[0:, np.where(feature_labels == 
                                selected_labels[l_ind])[0]]
         
-        self.X_latent = selected_features
+        X_latent = selected_features
+        return X_latent
 
 def bandwidth_selection(y):
     """Return smoothing / bandwidth param h, given observations of y"""
@@ -440,14 +475,12 @@ def run_session(fpath, m=4, d=4):
     # structure to avoid creating unnecessary boundary conditions.
     fb.filter()
     # Chunk sessions (~50-55min) into 1s trials (N samples)
-    fb.chunk_trials()
+    X, Y = fb.chunk_trials()
     # Normalize filtered EEG trial data
     # fb.X = fb.X.transpose() - fb.X.min(axis=3).min(axis=2).min(axis=1)
     # fb.X = fb.X / fb.X.std(axis=2).std(axis=1).std(axis=0)
     # fb.X = fb.X.transpose()
     # Store data
-    X = fb.X
-    Y = fb.Y
 
     # 'Codes greater than 10 indicate service periods including 99: 
     # “initial relaxation,” 91: “inter-session breaks,” 
@@ -458,10 +491,10 @@ def run_session(fpath, m=4, d=4):
     fb.N = Y.shape[0]
 
     # Allocate samples for cross-validation
-    n_folds = 3
+    n_folds = 10
     fold_labels = cv_select(fb.N, cv=n_folds)
     # Get set of class labels
-    class_set = np.unique(fb.Y)
+    class_set = np.unique(Y)
     
     # Allocate arrays for accuracy metrics
     acc = np.zeros(n_folds)
@@ -483,39 +516,34 @@ def run_session(fpath, m=4, d=4):
         # Loop over classes, this is where the magic of one-versus-rest
         # (OVR) happens. 
         for w in class_set.astype(int):
-            # Set fbcsp data to train
-            fb.X = X[0:, 0:, train_fold, 0:]
-            fb.Y = Y[train_fold]
-            fb.N = fb.Y.shape[0]
+            # Split data into train and test
+            x_train = X[0:, 0:, train_fold, 0:]
+            x_test = X[0:, 0:, test_fold, 0:]
+            y_train = Y[train_fold]
+
             # Calculate CSP transformation matrix
-            fb.CSP(class_marker=w, m=m)
+            fb.CSP(x_train, y_train, class_marker=w, m=m)
             # Transform training data into CSP coordinates, and  
             # calculate variance ratio features.
-            fb.CSP_xform()
+            V_train = fb.CSP_xform(x_train)
             # Calculate information for CSP variance features
-            fb.MIBIF(class_marker=w)
+            fb.MIBIF(F=V_train, Y=y_train, class_marker=w)
             # Select most informative CSP variance features
-            fb.MIBIF_select(d=d)
-            # Get classification training data
-            x_train = fb.X_latent
-
-            # Set fbcsp data to test
-            fb.X = X[0:, 0:, test_fold, 0:]
-            fb.N = fb.X.shape[2]
-
-            # Extract and select test features
-            fb.CSP_xform()
-            fb.MIBIF_select(d=d)
-            x_test = fb.X_latent
+            x_train_nb = fb.MIBIF_select(F=V_train, d=d)
 
             # Set OVR sample-class labels 
             Y_ovr = np.zeros(Y.shape)
             Y_ovr[Y != w] = 0
             Y_ovr[Y == w] = 1
             y_train = Y_ovr[train_fold]
+
+            # Extract and select test features
+            V_test = fb.CSP_xform(x_test)
+            x_test_nb = fb.MIBIF_select(F=V_test, d=d)
+
             # Classify, returns OVR probabilities for each 'one' in OVR
-            p_y_x[0:, 0:, w-1] = naive_bayes_kde(x_test, 
-                                                 x_train, 
+            p_y_x[0:, 0:, w-1] = naive_bayes_kde(x_test_nb, 
+                                                 x_train_nb, 
                                                  y_train)
 
         # Select class label with highest OVR probability
@@ -530,8 +558,8 @@ if __name__ == "__main__":
     # Set data file path
     #fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/CLASubjectA1601083StLRHand.mat'
     #fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/CLASubjectC1512163StLRHand.mat'
-    fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/5F-SubjectF-151027-5St-SGLHand.mat'
-    #fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/HaLTSubjectA1602236StLRHandLegTongue.mat'
+    # fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/5F-SubjectF-151027-5St-SGLHand.mat'
+    fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/HaLTSubjectA1602236StLRHandLegTongue.mat'
     # fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/HaLTSubjectB1602256StLRHandLegTongue.mat'
 
     np.random.seed(0)
