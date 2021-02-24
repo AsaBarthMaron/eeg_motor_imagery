@@ -145,36 +145,34 @@ class FBCSP(object):
         Y = Y
         return X, Y
 
-    def CSP(self, X, Y, class_marker, m=4):
+    def CSP(self, x_train, y_train, m=4):
         """Perform Common Spatial Pattern (CSP) dimensionality reduction  
         / feature extraction. Multi-class extension using OVR. 
 
         Parameters:
-            X: Filtered trial data (training data). Dimensions of X
-                are n_ch x trial_len x N x n_filters.
-            Y: Class labels (training data). Dimensions are N X 1.
+            x_train: Filtered trial data (training data). Dimensions of 
+                x_train are n_ch x trial_len x N x n_filters.
+            y_train: Class labels (training data). Dimensions are N X 1.
             m: Number of CSP features to use to build transformation
                 matrix Wm. Actual dimension of Wm will be 2*m since CSP
                 features are paired.
-            class_marker: Class label / y value to select as 'one' for
-                OVR training.
 
         Refs: Koles et al., 1990
         """
 
-        N = Y.shape[0]
+        N = y_train.shape[0]
         # Calculate trial covariance matrices 
         trial_cov = np.zeros([self.n_ch, self.n_ch, N, self.n_filters])
         for b in range(self.n_filters):
             for n in range(N):
-                trial_cov[0:, 0:, n, b] = np.cov(X[0:, 0:, n, b])
+                trial_cov[0:, 0:, n, b] = np.cov(x_train[0:, 0:, n, b])
 
         # Allocate arrays for class conditional covariance matrices
         class_cov = np.zeros([self.n_ch, self.n_ch, self.n_filters])
         rest_cov = np.zeros([self.n_ch, self.n_ch, self.n_filters])
         # Average over trials for 'class_marker' and rest 
-        class_cov = trial_cov[0:,0:,Y == class_marker, 0:].mean(axis=2)
-        rest_cov = trial_cov[0:,0:, Y != class_marker, 0:].mean(axis=2)
+        class_cov = trial_cov[0:,0:,y_train == 1, 0:].mean(axis=2)
+        rest_cov = trial_cov[0:,0:, y_train == 0, 0:].mean(axis=2)
 
         # Solve generalized eigenvalue problem for each Wb
         # Wb: CSP projection matrix for bth band-pass filtered EEG signal
@@ -201,7 +199,7 @@ class FBCSP(object):
         Refs: Koles et al., 1990
 
         Parameters:
-            X: Filtered trial data (training data). Dimensions of X
+            X: Filtered trial data (training or test). Dimensions of X
                 are n_ch x trial_len x N x n_filters.
         Returns:
             V: CSP feature vector (variance ratio features). Also termed
@@ -235,7 +233,7 @@ class FBCSP(object):
              .reshape([N, 2*self.m*self.n_filters], order='F')
         return V
 
-    def MIBIF(self, F, Y, class_marker):
+    def MIBIF(self, F_train, y_train):
         """Mutual Information-based Best Individual Feature (MIBIF) for
         feature selection. 
         Step 1 - Initalize set of features (F)
@@ -244,13 +242,11 @@ class FBCSP(object):
         Step 3 - Select first d features (performed in MIBIF_select)
         
         Parameters:
-            F: CSP feature vector (variance ratio features). Also termed
-                'V' in CSP step. Dimensions of F are N x (2*m*9) - 2
-                since CSP features are paired, m CSP features, for 9
-                filtered signals. 
-            Y: Class labels (training data). Dimensions are N X 1.
-            class_marker: Class label / y value to select as 'one' for
-                OVR training.
+            F_train: CSP feature vector (variance ratio features) for 
+                training data. Also termed 'V' in CSP step. Dimensions 
+                of F are N x (2*m*9) - 2 since CSP features are paired, 
+                m CSP features, for 9 filtered signals. 
+            y_train: Class labels (training data). Dimensions are N X 1.
 
         Refs: Ang et al., 2008; Ang et al., 2012; Chin et al., 2009
 
@@ -259,27 +255,23 @@ class FBCSP(object):
         FBCSP extension only uses MIBIF. Might consider trying MIRSR later.
         """
 
-        N = Y.shape[0]
-        # Set one-vs-rest class labels
-        Y_ovr = np.zeros(N)
-        Y_ovr[Y != class_marker] = 0
-        Y_ovr[Y == class_marker] = 1
-
+        N = y_train.shape[0]
         # Step 2 - compute mutual information of each feature with class
         # I(f_j; w) = H(w) - H(w|f_j)
         # f_j: jth feature of F
         # w: class label
 
         # Calculate class entropy
-        _, p_y = np.unique(Y_ovr, return_counts=True)
-        p_y = p_y / Y_ovr.shape[0]
+        C, p_y = np.unique(y_train, return_counts=True)
+        C = C.astype(int)
+        p_y = p_y / N
         H_y = -(p_y * np.log2(p_y)).sum()
 
         # Calculate class-conditional feature probabiltiy using kernel
         # density estimation / parzen window.
 
         # Allocate conditional probability array p(f_ji|y)
-        n_features = F.shape[1]
+        n_features = F_train.shape[1]
         p_fji_y = np.zeros([n_features, N, 2])
         # Allocate marginal probability array p(f_ji)
         p_fji = np.zeros([n_features, N])
@@ -288,14 +280,14 @@ class FBCSP(object):
         # Loop over features
         for j in range(n_features):
             # Loop over classes
-            for y in [0, 1]:
+            for y in C:
                 # Subset of features belonging to given class y
-                f_y = F[Y_ovr == y, j]
+                f_y = F_train[y_train == y, j]
                 # Select kernel bandwidth for conditional p(f_j|y)
                 h = bandwidth_selection(f_y)
                 # Calculate class conditional probability p(f_ji|y)
                 for i in range(N):
-                    f = F[i, j]
+                    f = F_train[i, j]
                     p_fji_y[j, i, y] = kernel_density_estimate(f, f_y, h)
             # Calculate marginal probability p(f_ji), law of total 
             # probability
@@ -516,26 +508,24 @@ def run_session(fpath, m=4, d=4):
         # Loop over classes, this is where the magic of one-versus-rest
         # (OVR) happens. 
         for w in class_set.astype(int):
-            # Split data into train and test
-            x_train = X[0:, 0:, train_fold, 0:]
-            x_test = X[0:, 0:, test_fold, 0:]
-            y_train = Y[train_fold]
-
-            # Calculate CSP transformation matrix
-            fb.CSP(x_train, y_train, class_marker=w, m=m)
-            # Transform training data into CSP coordinates, and  
-            # calculate variance ratio features.
-            V_train = fb.CSP_xform(x_train)
-            # Calculate information for CSP variance features
-            fb.MIBIF(F=V_train, Y=y_train, class_marker=w)
-            # Select most informative CSP variance features
-            x_train_nb = fb.MIBIF_select(F=V_train, d=d)
-
             # Set OVR sample-class labels 
             Y_ovr = np.zeros(Y.shape)
             Y_ovr[Y != w] = 0
             Y_ovr[Y == w] = 1
+            # Split data into train and test
+            x_train = X[0:, 0:, train_fold, 0:]
+            x_test = X[0:, 0:, test_fold, 0:]
             y_train = Y_ovr[train_fold]
+
+            # Calculate CSP transformation matrix
+            fb.CSP(x_train, y_train, m=m)
+            # Transform training data into CSP coordinates, and  
+            # calculate variance ratio features.
+            V_train = fb.CSP_xform(x_train)
+            # Calculate information for CSP variance features
+            fb.MIBIF(F_train=V_train, y_train=y_train)
+            # Select most informative CSP variance features
+            x_train_nb = fb.MIBIF_select(F=V_train, d=d)
 
             # Extract and select test features
             V_test = fb.CSP_xform(x_test)
