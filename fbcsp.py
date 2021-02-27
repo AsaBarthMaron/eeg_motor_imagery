@@ -446,7 +446,7 @@ def accuracy(y_hat, y_test):
     accuracy = np.sum(y_hat == y_test) / y_hat.shape[0]
     return accuracy
 
-def run_session(fpath, m=4, d=4):
+def run_session(fpath, n_folds=10, m=4, d=4):
     """Run the entire FBCSP algorithm on a particular recording session.
 
     Parameters:
@@ -483,7 +483,6 @@ def run_session(fpath, m=4, d=4):
     fb.N = Y.shape[0]
 
     # Allocate samples for cross-validation
-    n_folds = 10
     fold_labels = cv_select(fb.N, cv=n_folds)
     # Get set of class labels
     class_set = np.unique(Y)
@@ -553,7 +552,7 @@ if __name__ == "__main__":
     # fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/HaLTSubjectB1602256StLRHandLegTongue.mat'
 
     np.random.seed(0)
-    acc, kappa = run_session(fpath, m=4, d=4)
+    acc, kappa = run_session(fpath, n_folds=3, m=4, d=4)
 
         
 
