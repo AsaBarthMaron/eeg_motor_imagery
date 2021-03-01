@@ -54,6 +54,14 @@ class FBCSP(object):
         for name in mat_file['o'][0][0]['chnames']:
             self.chnames.append(name[0][0])
 
+        # Digitally re-reference to common mode average
+        #A1_index = self.chnames.index('A1')
+        #A2_index = self.chnames.index('A2')
+        #ref = self.data[0:, [A1_index, A2_index]].mean(axis=1)
+        ref = np.delete(self.data, self.chnames.index('X5'), axis=1)
+        ref = ref.mean(axis=1)
+        self.data = (self.data.transpose() - ref).transpose()
+
         # Remove ground ('A1', 'A2') and data sync ('X5') channels
         # TODO: is 'X5' sometimes 'X3'?
         for ch in ['A1', 'A2', 'X5']:
@@ -545,10 +553,10 @@ def run_session(fpath, n_folds=10, m=4, d=4):
 
 if __name__ == "__main__":
     # Set data file path
-    #fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/CLASubjectA1601083StLRHand.mat'
+    fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/CLASubjectA1601083StLRHand.mat'
     #fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/CLASubjectC1512163StLRHand.mat'
     # fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/5F-SubjectF-151027-5St-SGLHand.mat'
-    fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/HaLTSubjectA1602236StLRHandLegTongue.mat'
+    # fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/HaLTSubjectA1602236StLRHandLegTongue.mat'
     # fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/HaLTSubjectB1602256StLRHandLegTongue.mat'
 
     np.random.seed(0)
