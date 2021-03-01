@@ -55,9 +55,6 @@ class FBCSP(object):
             self.chnames.append(name[0][0])
 
         # Digitally re-reference to common mode average
-        #A1_index = self.chnames.index('A1')
-        #A2_index = self.chnames.index('A2')
-        #ref = self.data[0:, [A1_index, A2_index]].mean(axis=1)
         ref = np.delete(self.data, self.chnames.index('X5'), axis=1)
         ref = ref.mean(axis=1)
         self.data = (self.data.transpose() - ref).transpose()
@@ -121,12 +118,6 @@ class FBCSP(object):
         # Find trial start indices. 
         trial_start_inds = np.where(np.diff(self.marker, axis = 0) 
                                             >= 1)[0] + 1
-        trial_end_inds = np.where(np.diff(self.marker, axis = 0) 
-                                          <= -1)[0] + 1
-        # Throw error if # of trial starts and ends are different
-        if trial_start_inds.shape != trial_end_inds.shape:
-            raise ValueError('Inconsistent # of trial starts and ends')
-
         # Set number of samples (trials)
         N = trial_start_inds.shape[0]
         # Allocate X and Y arrays
