@@ -46,8 +46,7 @@ class FBCSP(object):
         self.sampFreq = int(mat_file['o'][0][0]['sampFreq'])
         self.tag = mat_file['o'][0][0]['tag']
         # Inherent to experimental structure, trials are always 1 second
-        # Mischenko et al. only used first 0.85s
-        self.trial_len = int(0.85 * self.sampFreq)
+        self.trial_len = 1 * self.sampFreq
 
         # .mat file import format problems, probably there is a better 
         # way of handling this
@@ -99,7 +98,7 @@ class FBCSP(object):
 
         # Passband frequencies (Hz) for filter bank. Am using additional 
         # 1 Hz on either side from published.
-        self.wp = np.array([[3, 9] + m for m in np.arange(0,33,4)])
+        self.wp = np.array([[4, 8] + m for m in np.arange(0,33,4)])
 
         # Loop over filters and channels and filter data.
         # Published filter is zero phase, but I am just using filtfilt.
