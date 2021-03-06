@@ -55,18 +55,29 @@ class FBCSP(object):
             self.chnames.append(name[0][0])
 
         # Digitally re-reference to common mode average
-        ref = np.delete(self.data, self.chnames.index('X5'), axis=1)
-        ref = ref.mean(axis=1)
-        self.data = (self.data.transpose() - ref).transpose()
+        # ref = np.delete(self.data, self.chnames.index('X5'), axis=1)
+        # ref = ref.mean(axis=1)
+        # self.data = (self.data.transpose() - ref).transpose()
+
+        # It appears that the data sync channel is not present in every
+        # recording
+        if 'X5' in self.chnames:
+            exclude_ch = ['A1', 'A2', 'X5']
+        else:
+            exclude_ch = ['A1', 'A2']
 
         # Remove ground ('A1', 'A2') and data sync ('X5') channels
         # TODO: is 'X5' sometimes 'X3'?
-        for ch in ['A1', 'A2', 'X5']:
+        for ch in exclude_ch:
             loc = self.chnames.index(ch)
             self.data = np.delete(self.data, loc, axis=1)
             self.chnames.remove(ch)
 
         self.n_ch = len(self.chnames)
+
+        # Digitally re-reference to common mode average
+        ref = self.data.mean(axis=1)
+        self.data = (self.data.transpose() - ref).transpose()
 
     def filter(self):
         """Create standard filter bank array of:
