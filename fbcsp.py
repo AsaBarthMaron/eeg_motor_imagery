@@ -54,30 +54,26 @@ class FBCSP(object):
         for name in mat_file['o'][0][0]['chnames']:
             self.chnames.append(name[0][0])
 
-        # Digitally re-reference to common mode average
-        # ref = np.delete(self.data, self.chnames.index('X5'), axis=1)
-        # ref = ref.mean(axis=1)
-        # self.data = (self.data.transpose() - ref).transpose()
-
         # It appears that the data sync channel is not present in every
-        # recording
+        # recording. Also, data sync channel is named 'X5' but referred
+        # to in Kaya et al as 'X3'?
         if 'X5' in self.chnames:
-            exclude_ch = ['A1', 'A2', 'X5']
-        else:
-            exclude_ch = ['A1', 'A2']
+            self.data = np.delete(self.data, self.chnames.index('X5'), 
+                                  axis=1)
+            self.chnames.remove('X5')
 
-        # Remove ground ('A1', 'A2') and data sync ('X5') channels
-        # TODO: is 'X5' sometimes 'X3'?
-        for ch in exclude_ch:
+        # Digitally re-reference to common mode average
+        ref = self.data.mean(axis=1)
+        self.data = (self.data.transpose() - ref).transpose()
+
+        # Remove ground ('A1', 'A2') channels 
+        for ch in ['A1', 'A2']:
             loc = self.chnames.index(ch)
             self.data = np.delete(self.data, loc, axis=1)
             self.chnames.remove(ch)
 
         self.n_ch = len(self.chnames)
 
-        # Digitally re-reference to common mode average
-        ref = self.data.mean(axis=1)
-        self.data = (self.data.transpose() - ref).transpose()
 
     def filter(self):
         """Create standard filter bank array of:
