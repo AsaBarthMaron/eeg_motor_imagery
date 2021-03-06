@@ -46,7 +46,8 @@ class FBCSP(object):
         self.sampFreq = int(mat_file['o'][0][0]['sampFreq'])
         self.tag = mat_file['o'][0][0]['tag']
         # Inherent to experimental structure, trials are always 1 second
-        self.trial_len = 1 * self.sampFreq
+        # Mischenko et al. only used first 0.85s
+        self.trial_len = 0.85 * self.sampFreq
 
         # .mat file import format problems, probably there is a better 
         # way of handling this
