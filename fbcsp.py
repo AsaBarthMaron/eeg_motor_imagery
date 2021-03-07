@@ -83,15 +83,6 @@ class FBCSP(object):
         Refs: Ang et al., 2008; Ang et al., 2012; Chin et al., 2009
         """
 
-        self.n_filters = 9      # Standard FBCSP filter bank
-
-        # This is the largest feature expansion and uses almost
-        # 1GB memory for a 50-55 min session. It would be possible to do 
-        # each filter sequentially to minmize memeory load.
-        self.X = np.zeros((self.data.shape[0], 
-                           self.n_ch, 
-                           self.n_filters))
-
         # Design filter
         N = 6               # Filter order, from signal.freqz
         rs = 40             # Min. stopband attenuation
@@ -101,6 +92,14 @@ class FBCSP(object):
         # self.wp = np.array([[4, 8] + m for m in np.arange(-3.5,33,4)])
         # self.wp = np.array([[0, 2] + m for m in np.arange(0.5,9.5, 0.5)])
         self.wp = np.array([[0, 2] + m for m in np.arange(0.5,18)])
+        self.n_filters = self.wp.shape[0]
+
+        # This is the largest feature expansion and uses almost
+        # 1GB memory for a 50-55 min session. It would be possible to do 
+        # each filter sequentially to minmize memeory load.
+        self.X = np.zeros((self.data.shape[0], 
+                           self.n_ch, 
+                           self.n_filters))
 
         # Loop over filters and channels and filter data.
         # Published filter is zero phase, but I am just using filtfilt.
