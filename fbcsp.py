@@ -98,7 +98,9 @@ class FBCSP(object):
 
         # Passband frequencies (Hz) for filter bank. Am using additional 
         # 1 Hz on either side from published.
-        self.wp = np.array([[4, 8] + m for m in np.arange(0,33,4)])
+        # self.wp = np.array([[4, 8] + m for m in np.arange(-3.5,33,4)])
+        # self.wp = np.array([[0, 2] + m for m in np.arange(0.5,9.5, 0.5)])
+        self.wp = np.array([[0, 2] + m for m in np.arange(0.5,18)])
 
         # Loop over filters and channels and filter data.
         # Published filter is zero phase, but I am just using filtfilt.
@@ -551,14 +553,15 @@ def run_session(fpath, n_folds=10, m=4, d=4):
 
 if __name__ == "__main__":
     # Set data file path
-    fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/CLASubjectA1601083StLRHand.mat'
+    # fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/CLASubjectA1601083StLRHand.mat'
     #fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/CLASubjectC1512163StLRHand.mat'
+    fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/CLASubjectB1512153StLRHand.mat'
     # fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/5F-SubjectF-151027-5St-SGLHand.mat'
     # fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/HaLTSubjectA1602236StLRHandLegTongue.mat'
     # fpath = '/Volumes/SSD_DATA/kaya_mishchenko_eeg/HaLTSubjectB1602256StLRHandLegTongue.mat'
 
     np.random.seed(0)
-    acc, kappa = run_session(fpath, n_folds=3, m=4, d=4)
+    acc, kappa = run_session(fpath, n_folds=10, m=9, d=4)
 
         
 
