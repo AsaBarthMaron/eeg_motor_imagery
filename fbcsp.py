@@ -90,7 +90,7 @@ class FBCSP(object):
         # Passband frequencies (Hz) for filter bank. Am using additional 
         # 1 Hz on either side from published.
         # self.wp = np.array([[4, 8] + m for m in np.arange(-3.5,33,4)])
-        self.wp = np.array([[0, 2] + m for m in np.arange(0.5,39.5, 0.5)])
+        self.wp = np.array([[0, 2] + m for m in np.arange(0.5, 18.5, 0.5)])
         # self.wp = np.array([[0, 4] + m for m in np.arange(0.5,9)])
         self.n_filters = self.wp.shape[0]
 
