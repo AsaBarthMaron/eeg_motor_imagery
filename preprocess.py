@@ -65,7 +65,7 @@ def preprocess(fpath, fname):
         X[0:, 0:, i] = np.swapaxes(data[t_i:t_i+trial_len, 0:], 0, 1)
         # Save X to file
         x_name.append(str(i) + '.npy')
-        np.save(os.path.join(pytorch_path, x_name[-1]), X[0:, 0:, i])
+        np.save(os.path.join(pytorch_path, x_name[-1]), X[0:, 0:, i].astype('float32'))
         # Grab Y value
         Y[i] = int(marker[t_i])
 
