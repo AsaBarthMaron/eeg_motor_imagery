@@ -4,7 +4,7 @@ import numpy as np
 from torch.utils.data import Dataset
 
 
-class CustomImageDataset(Dataset):
+class EegDataset(Dataset):
     def __init__(self, annotations_file, data_dir, transform=None, target_transform=None):
         print(annotations_file)
         self.labels = pd.read_csv(annotations_file)
@@ -23,6 +23,6 @@ class CustomImageDataset(Dataset):
             image = self.transform(image)
         if self.target_transform:
             label = self.target_transform(label)
-        sample = {"image": image, "label": label}
+        sample = (image, label)
         return sample
 
