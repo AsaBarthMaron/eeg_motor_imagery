@@ -19,8 +19,17 @@ The first method I tried is the winner of the BCI Competition IV Datasets [2a](h
 Raw EEG data is band-pass filtered, expanding the feature set.
 
 ### Common Spatial Pattern
-Perform dimensionality reduction using CSP (Koles et al., 1990), multiclass extension with OVR.
+Perform spatial filtering (dimensionality reduction) using CSP (Koles et al., 1990), multiclass extension with OVR.
 
+### Mutual Information-based feature selection.
+Mutual Information-based Best Individual Feature (MIBIF) for feature selection. 
+
+### Naive Bayes Classifier
+Naive bayes classifier using kernel density estimation / parzen window for p(x|y) (NBPW).
+
+
+## Deep Learning Methods
+The first method I would like to try is pretrained AlexNet
 
 
 Chin, Z., Ang, K., Wang, C., Guan, C., and Zhang, H. (2009). 
