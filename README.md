@@ -24,7 +24,8 @@ The first method I tried is the winner of the BCI Competition IV Datasets [2a](h
 * **Naive Bayes Classifier** using kernel density estimation / parzen window (NBPW).
 
 ## Results
-
+Below are the accuracies from my FBCSP implementation compared to performance of an SVM from Kaya et al., 2018
+![Accuracy comparison](https://github.com/AsaBarthMaron/asabarthmaron.github.io/blob/master/files/fbcsp_results.png)
 
 
 
