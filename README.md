@@ -23,6 +23,10 @@ The first method I tried is the winner of the BCI Competition IV Datasets [2a](h
 
 * **Naive Bayes Classifier** using kernel density estimation / parzen window (NBPW).
 
+## Results
+
+
+
 
 ## Deep Learning Methods
 The first method I would like to try is pretrained AlexNet
