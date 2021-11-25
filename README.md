@@ -15,16 +15,16 @@ The first method I tried is the winner of the BCI Competition IV Datasets [2a](h
 ![FBCSP](https://github.com/AsaBarthMaron/asabarthmaron.github.io/blob/master/files/FBCSP.png)
 (Chin et al., 2009)
 
-### Filter Bank
+* Filter Bank
 Raw EEG data is band-pass filtered, expanding the feature set.
 
-### Common Spatial Pattern
+* Common Spatial Pattern
 Perform spatial filtering (dimensionality reduction) using CSP (Koles et al., 1990), multiclass extension with OVR.
 
-### Mutual Information-based feature selection.
+* Mutual Information-based feature selection.
 Mutual Information-based Best Individual Feature (MIBIF) for feature selection. 
 
-### Naive Bayes Classifier
+* Naive Bayes Classifier
 Naive bayes classifier using kernel density estimation / parzen window for p(x|y) (NBPW).
 
 
