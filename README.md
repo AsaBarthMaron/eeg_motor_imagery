@@ -4,11 +4,11 @@ The goal of this project is to predict imagined movements (termed 'motor imageri
 
 There are three paradigms for this BCI task:
 
-CLA -  Three class classification between imagined left hand movements, imagined right hand movements, and a passive state.
+-CLA -  Three class classification between imagined left hand movements, imagined right hand movements, and a passive state.
 
-HaLT - Six class classification. Same as  CLA but with additional classes for imagined left foot, right foot, and tongue movements. 
+-HaLT - Six class classification. Same as  CLA but with additional classes for imagined left foot, right foot, and tongue movements. 
 
-5F - Five class classification for imagined movements for each of the fingers on one hand.
+-5F - Five class classification for imagined movements for each of the fingers on one hand.
 
 ![FBCSP](https://github.com/AsaBarthMaron/asabarthmaron.github.io/blob/master/files/FBCSP.png)
 
