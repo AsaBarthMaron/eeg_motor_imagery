@@ -29,9 +29,6 @@ Below are the accuracies from my FBCSP implementation compared to performance of
 
 
 
-## Deep Learning Methods
-The first method I would like to try is pretrained AlexNet
-
 
 Chin, Z., Ang, K., Wang, C., Guan, C., and Zhang, H. (2009). 
     Multi-class Filter Bank Common Spatial Pattern for Four-Class Motor 
